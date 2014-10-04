@@ -163,7 +163,7 @@ void ath_set_tuning_caps(void){
 		u_int8_t params_for_tuning_caps[2];
 		u_int8_t featureEnable;
 	} __attribute__((__packed__)) ar9300_eeprom_t;
-	
+
 	ar9300_eeprom_t	*eep = (ar9300_eeprom_t *)WLANCAL;
 	uint32_t val = 0;
 
@@ -181,15 +181,16 @@ void ath_set_tuning_caps(void){
 			val = (0x2040 << 17);	/*default 0x4080 for 25Mhz clock*/
 		}
 	}
-	
+
 	val |= (ar7240_reg_rd(XTAL_ADDRESS) & (((1 << 17) - 1) | (1 << 31)));
 	ar7240_reg_wr(XTAL_ADDRESS, val);
-	
+
 	//prmsg("Setting 0xb8116290 to 0x%x\n", val);
 	return;
 }
 
 int wasp_mem_config(void){
+#ifndef CONFIG_SKIP_LOWLEVEL_INIT
 	unsigned int reg32;
 
 	wasp_ddr_initial_config(CFG_DDR_REFRESH_VAL);
@@ -197,7 +198,7 @@ int wasp_mem_config(void){
 	/* Take WMAC out of reset */
 	reg32 = ar7240_reg_rd(AR7240_RESET);
 	reg32 = reg32 & ~AR7240_RESET_WMAC;
-	
+
 	ar7240_reg_wr_nf(AR7240_RESET, reg32);
 
 	/* Switching regulator settings */
@@ -208,7 +209,8 @@ int wasp_mem_config(void){
 
 	/* Needed here not to mess with Ethernet clocks */
 	ath_set_tuning_caps();
-	
+
+#endif
 	// return memory size
 	return(ar7240_ddr_find_size());
 }
@@ -216,6 +218,13 @@ int wasp_mem_config(void){
 long int initdram(){
 	return((long int)wasp_mem_config());
 }
+
+#ifndef COMPRESSED_UBOOT
+int checkboard(void){
+	printf(BOARD_CUSTOM_STRING"\n\n");
+	return(0);
+}
+#endif
 
 /*
  * Returns a string with memory type preceded by a space sign

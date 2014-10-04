@@ -36,7 +36,9 @@ void led_toggle(void){
 	gpio ^= 1 << GPIO_SYS_LED_BIT;
 #elif defined(CONFIG_FOR_8DEVICES_CARAMBOLA2)
 	gpio ^= 1 << GPIO_WLAN_LED_BIT;
-#elif defined(CONFIG_FOR_DRAGINO_V2)
+#elif defined(CONFIG_FOR_DRAGINO_V2) || defined(CONFIG_FOR_MESH_POTATO_V2)
+	gpio ^= 1 << GPIO_WLAN_LED_BIT;
+#elif defined(CONFIG_FOR_GL_INET)
 	gpio ^= 1 << GPIO_WLAN_LED_BIT;
 #else
 	#error "Custom GPIO in leg_toggle() not defined!"
@@ -85,11 +87,14 @@ void all_led_on(void){
 	SETBITVAL(gpio, GPIO_LAN2_LED_BIT, GPIO_LAN2_LED_ON);
 #elif defined(CONFIG_FOR_8DEVICES_CARAMBOLA2)
 	SETBITVAL(gpio, GPIO_WLAN_LED_BIT, GPIO_WLAN_LED_ON);
-#elif defined(CONFIG_FOR_DRAGINO_V2)
+#elif defined(CONFIG_FOR_DRAGINO_V2) || defined(CONFIG_FOR_MESH_POTATO_V2)
 	SETBITVAL(gpio, GPIO_WLAN_LED_BIT,     GPIO_WLAN_LED_ON);
 	SETBITVAL(gpio, GPIO_WAN_LED_BIT,      GPIO_WAN_LED_ON);
 	SETBITVAL(gpio, GPIO_LAN_LED_BIT,      GPIO_LAN_LED_ON);
 	SETBITVAL(gpio, GPIO_INTERNET_LED_BIT, GPIO_INTERNET_LED_ON);
+#elif defined(CONFIG_FOR_GL_INET)
+	SETBITVAL(gpio, GPIO_WLAN_LED_BIT, GPIO_WLAN_LED_ON);
+	SETBITVAL(gpio, GPIO_LAN_LED_BIT,  GPIO_LAN_LED_ON);
 #else
 	#error "Custom GPIO in all_led_on() not defined!"
 #endif
@@ -137,11 +142,14 @@ void all_led_off(void){
 	SETBITVAL(gpio, GPIO_LAN2_LED_BIT, !GPIO_LAN2_LED_ON);
 #elif defined(CONFIG_FOR_8DEVICES_CARAMBOLA2)
 	SETBITVAL(gpio, GPIO_WLAN_LED_BIT, !GPIO_WLAN_LED_ON);
-#elif defined(CONFIG_FOR_DRAGINO_V2)
+#elif defined(CONFIG_FOR_DRAGINO_V2) || defined(CONFIG_FOR_MESH_POTATO_V2)
 	SETBITVAL(gpio, GPIO_WLAN_LED_BIT,     !GPIO_WLAN_LED_ON);
 	SETBITVAL(gpio, GPIO_WAN_LED_BIT,      !GPIO_WAN_LED_ON);
 	SETBITVAL(gpio, GPIO_LAN_LED_BIT,      !GPIO_LAN_LED_ON);
 	SETBITVAL(gpio, GPIO_INTERNET_LED_BIT, !GPIO_INTERNET_LED_ON);
+#elif defined(CONFIG_FOR_GL_INET)
+	SETBITVAL(gpio, GPIO_WLAN_LED_BIT, !GPIO_WLAN_LED_ON);
+	SETBITVAL(gpio, GPIO_LAN_LED_BIT,  !GPIO_LAN_LED_ON);
 #else
 	#error "Custom GPIO in all_led_off() not defined!"
 #endif
@@ -205,8 +213,10 @@ void gpio_config(void){
 
 	ar7240_reg_wr(AR7240_GPIO_FUNC, (ar7240_reg_rd(AR7240_GPIO_FUNC) & 0xEF84E0FB));
 
+#ifndef CONFIG_SKIP_LOWLEVEL_INIT
 	/* Disable EJTAG functionality to enable GPIO functionality */
 	ar7240_reg_wr(AR7240_GPIO_FUNC, (ar7240_reg_rd(AR7240_GPIO_FUNC) | 0x8001));
+#endif
 
 	/* Set HORNET_BOOTSTRAP_STATUS BIT18 to ensure that software can control GPIO26 and GPIO27 */
 	ar7240_reg_wr(HORNET_BOOTSTRAP_STATUS, (ar7240_reg_rd(HORNET_BOOTSTRAP_STATUS) | (0x1<<18)));
@@ -306,7 +316,7 @@ void gpio_config(void){
 	//ar7240_reg_wr (AR7240_GPIO_FUNC, (ar7240_reg_rd(AR7240_GPIO_FUNC) & 0xffe7e07f));
 #elif defined(CONFIG_FOR_8DEVICES_CARAMBOLA2)
 	// TODO: check GPIO config for C2
-#elif defined(CONFIG_FOR_DRAGINO_V2)
+#elif defined(CONFIG_FOR_DRAGINO_V2) || defined(CONFIG_FOR_MESH_POTATO_V2)
 
 	/* LED's GPIOs on MR3220v2:
 	 *
@@ -368,24 +378,40 @@ void gpio_config(void){
 
 	// turn on power on USB and turn off RED LEDs
 	ar7240_reg_wr(AR7240_GPIO_SET, 0x47D4103);
+#elif defined(CONFIG_FOR_GL_INET)
+
+	/* LED's GPIOs on GL.iNet:
+	 *
+	 * 0	=> WLAN
+	 * 13	=> LAN
+	 *
+	 */
+
+	/* set GPIO_OE */
+	ar7240_reg_wr(AR7240_GPIO_OE, (ar7240_reg_rd(AR7240_GPIO_OE) | 0x2001));
+
 #else
 	#error "Custom GPIO config in gpio_config() not defined!"
 #endif
 }
 
 int ar7240_mem_config(void){
-#ifndef COMPRESSED_UBOOT
+#ifndef CONFIG_SKIP_LOWLEVEL_INIT
+	#ifndef COMPRESSED_UBOOT
 	hornet_ddr_init();
-#endif
+	#endif
 
 	/* Default tap values for starting the tap_init*/
 	ar7240_reg_wr(AR7240_DDR_TAP_CONTROL0, CFG_DDR_TAP0_VAL);
 	ar7240_reg_wr(AR7240_DDR_TAP_CONTROL1, CFG_DDR_TAP1_VAL);
+#endif
 
 	gpio_config();
 	all_led_off();
 
+#ifndef CONFIG_SKIP_LOWLEVEL_INIT
 	hornet_ddr_tap_init();
+#endif
 
 	// return memory size
 	return(ar7240_ddr_find_size());
