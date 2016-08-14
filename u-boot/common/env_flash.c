@@ -34,6 +34,7 @@
 #include <environment.h>
 #include <linux/stddef.h>
 #include <malloc.h>
+#include <tinf.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -99,8 +100,8 @@ int env_init(void){
 	ulong addr1 = (ulong)&(flash_addr->data);
 	ulong addr2 = (ulong)&(flash_addr_new->data);
 
-	crc1_ok = (crc32(0, flash_addr->data, ENV_SIZE) == flash_addr->crc);
-	crc2_ok = (crc32(0, flash_addr_new->data, ENV_SIZE) == flash_addr_new->crc);
+	crc1_ok = (tinf_crc32(flash_addr->data, ENV_SIZE) == flash_addr->crc);
+	crc2_ok = (tinf_crc32(flash_addr_new->data, ENV_SIZE) == flash_addr_new->crc);
 
 	if(crc1_ok && !crc2_ok){
 		gd->env_addr  = addr1;
@@ -138,23 +139,8 @@ int saveenv(void){
 	char flag = OBSOLETE_FLAG, new_flag = ACTIVE_FLAG;
 #if CFG_ENV_SECT_SIZE > CFG_ENV_SIZE
 	ulong up_data = 0;
-#endif
 
-	//debug("Protect off %08lX ... %08lX\n", (ulong)flash_addr, end_addr);
-
-	if(flash_sect_protect(0, (ulong)flash_addr, end_addr)){
-		goto Done;
-	}
-
-	//debug("Protect off %08lX ... %08lX\n", (ulong)flash_addr_new, end_addr_new);
-
-	if(flash_sect_protect(0, (ulong)flash_addr_new, end_addr_new)){
-		goto Done;
-	}
-
-#if CFG_ENV_SECT_SIZE > CFG_ENV_SIZE
 	up_data = (end_addr_new + 1 - ((long)flash_addr_new + CFG_ENV_SIZE));
-	//debug ("Data to save 0x%x\n", up_data);
 
 	if(up_data){
 		if((saved_data = malloc(up_data)) == NULL){
@@ -163,18 +149,11 @@ int saveenv(void){
 		}
 
 		memcpy(saved_data, (void *)((long)flash_addr_new + CFG_ENV_SIZE), up_data);
-		//debug("Data (start 0x%x, len 0x%x) saved at 0x%x\n", (long)flash_addr_new + CFG_ENV_SIZE, up_data, saved_data);
 	}
 #endif
-	//debug("Erasing Flash...");
-	//debug(" %08lX ... %08lX ...", (ulong)flash_addr_new, end_addr_new);
-
 	if(flash_sect_erase((ulong)flash_addr_new, end_addr_new)){
 		goto Done;
 	}
-
-	//debug("Writing to Flash... ");
-	//debug(" %08lX ... %08lX ...", (ulong)&(flash_addr_new->data), sizeof(env_ptr->data)+(ulong)&(flash_addr_new->data));
 
 	if((rc = flash_write((char *)env_ptr->data, (ulong)&(flash_addr_new->data), sizeof(env_ptr->data))) ||
 	   (rc = flash_write((char *)&(env_ptr->crc), (ulong)&(flash_addr_new->crc), sizeof(env_ptr->crc))) ||
@@ -184,11 +163,8 @@ int saveenv(void){
 		goto Done;
 	}
 
-	//debug("done\n");
-
 #if CFG_ENV_SECT_SIZE > CFG_ENV_SIZE
 	if(up_data){ /* restore the rest of sector */
-		//debug("Restoring the rest of data to 0x%x len 0x%x\n", (long)flash_addr_new + CFG_ENV_SIZE, up_data);
 		if(flash_write(saved_data, (long)flash_addr_new + CFG_ENV_SIZE, up_data)){
 			flash_perror(rc);
 			goto Done;
@@ -212,17 +188,13 @@ Done:
 		free(saved_data);
 	}
 
-	/* try to re-protect */
-	(void)flash_sect_protect(1, (ulong)flash_addr, end_addr);
-	(void)flash_sect_protect(1, (ulong)flash_addr_new, end_addr_new);
-
 	return(rc);
 }
 #endif /* CMD_SAVEENV */
 
 #else /* ! CFG_ENV_ADDR_REDUND */
 int env_init(void){
-	if(crc32(0, env_ptr->data, ENV_SIZE) == env_ptr->crc){
+	if(tinf_crc32(env_ptr->data, ENV_SIZE) == env_ptr->crc){
 		gd->env_addr = (ulong)&(env_ptr->data);
 		gd->env_valid = 1;
 
@@ -268,19 +240,9 @@ int saveenv(void){
 
 	end_addr = flash_sect_addr + len - 1;
 
-	//debug("Protect off %08lX ... %08lX\n", (ulong)flash_sect_addr, end_addr);
-
-	if(flash_sect_protect(0, flash_sect_addr, end_addr)){
-		return(1);
-	}
-
-	//debug("Erasing Flash...");
-
 	if(flash_sect_erase(flash_sect_addr, end_addr)){
 		return(1);
 	}
-
-	//debug("Writing to Flash... ");
 
 	rc = flash_write((char *)env_buffer, flash_sect_addr, len);
 
@@ -290,9 +252,6 @@ int saveenv(void){
 	} else {
 		//debug("done\n");
 	}
-
-	/* try to re-protect */
-	(void)flash_sect_protect(1, flash_sect_addr, end_addr);
 
 	return(rcode);
 }
@@ -315,14 +274,12 @@ void env_relocate_spec(void){
 		end_addr_new = ltmp;
 	}
 
-	if(flash_addr_new->flags != OBSOLETE_FLAG && crc32(0, flash_addr_new->data, ENV_SIZE) == flash_addr_new->crc){
+	if(flash_addr_new->flags != OBSOLETE_FLAG && tinf_crc32(flash_addr_new->data, ENV_SIZE) == flash_addr_new->crc){
 		char flag = OBSOLETE_FLAG;
 
 		gd->env_valid = 2;
 
-		flash_sect_protect(0, (ulong)flash_addr_new, end_addr_new);
 		flash_write(&flag, (ulong)&(flash_addr_new->flags), sizeof(flash_addr_new->flags));
-		flash_sect_protect(1, (ulong)flash_addr_new, end_addr_new);
 	}
 
 	if(flash_addr->flags != ACTIVE_FLAG && (flash_addr->flags & ACTIVE_FLAG) == ACTIVE_FLAG){
@@ -330,9 +287,7 @@ void env_relocate_spec(void){
 
 		gd->env_valid = 2;
 
-		flash_sect_protect(0, (ulong)flash_addr, end_addr);
 		flash_write(&flag, (ulong)&(flash_addr->flags), sizeof(flash_addr->flags));
-		flash_sect_protect(1, (ulong)flash_addr, end_addr);
 	}
 
 	if(gd->env_valid == 2){
